@@ -1,0 +1,305 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Xml.Linq;
+using System.Xml.XPath;
+using System.Threading;
+using System.Reflection;
+using SysMenu.Utils;
+using SysMenu.Hooks;
+
+namespace SysMenu.Settings
+{
+    static class ApplicationSettingsFile
+    {
+        public static ApplicationSettings Read()
+        {
+            if (GetCurrentDirectoryFile().Exists)
+            {
+                return ReadFromCurrentDirectoryFile();
+            }
+            else if (GetProfileFile().Exists)
+            {
+                return ReadFromProfileFile();
+            }
+            else
+            {
+                var settings = ReadFromResources();
+                SaveToProfileFile(settings);
+                return settings;
+            }
+        }
+
+        public static void Save(ApplicationSettings settings)
+        {
+            if (GetCurrentDirectoryFile().Exists)
+            {
+                SaveToCurrentDirectoryFile(settings);
+            }
+            else
+            {
+                SaveToProfileFile(settings);
+            }
+        }
+
+        private static FileInfo GetCurrentDirectoryFile()
+        {
+            var fileName = Path.Combine(AssemblyUtils.AssemblyDirectory, $"{AssemblyUtils.AssemblyTitle}.xml");
+            return new FileInfo(fileName);
+        }
+
+        private static FileInfo GetProfileFile()
+        {
+            var directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Toolbox", AssemblyUtils.AssemblyTitle, AssemblyUtils.AssemblyProductVersion);
+            var fileName = Path.Combine(directoryName, $"{AssemblyUtils.AssemblyTitle}.xml");
+            return new FileInfo(fileName);
+        }
+
+        private static ApplicationSettings ReadFromProfileFile()
+        {
+            var fileInfo = GetProfileFile();
+            using var stream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return Read(stream);
+        }
+
+        private static ApplicationSettings ReadFromCurrentDirectoryFile()
+        {
+            var fileInfo = GetCurrentDirectoryFile();
+            using var stream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return Read(stream);
+        }
+
+        private static ApplicationSettings ReadFromResources()
+        {
+            var resourceName = $"SysMenu.{AssemblyUtils.AssemblyTitle}.xml";
+            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+            return Read(stream);
+        }
+
+        private static void SaveToProfileFile(ApplicationSettings settings)
+        {
+            var fileInfo = GetProfileFile();
+            if (!Directory.Exists(fileInfo.Directory.FullName))
+            {
+                Directory.CreateDirectory(fileInfo.Directory.FullName);
+            }
+            Save(fileInfo.FullName, settings);
+        }
+
+        private static void SaveToCurrentDirectoryFile(ApplicationSettings settings)
+        {
+            var fileInfo = GetCurrentDirectoryFile();
+            Save(fileInfo.FullName, settings);
+        }
+
+        private static ApplicationSettings Read(Stream stream)
+        {
+            var settings = new ApplicationSettings();
+            var document = XDocument.Load(stream);
+
+            settings.MenuItems.WindowSizeItems = document
+                .XPathSelectElements("/smartContextMenu/menuItems/windowSizeItems/item")
+                .Select(x => new WindowSizeMenuItem
+                {
+                    Title = x.Attribute("title") != null ? x.Attribute("title").Value : string.Empty,
+                    Left = x.Attribute("left") != null && !string.IsNullOrEmpty(x.Attribute("left").Value) ? int.Parse(x.Attribute("left").Value) : null,
+                    Top = x.Attribute("top") != null && !string.IsNullOrEmpty(x.Attribute("top").Value) ? int.Parse(x.Attribute("top").Value) : null,
+                    Width = x.Attribute("width") != null && !string.IsNullOrEmpty(x.Attribute("width").Value) ? int.Parse(x.Attribute("width").Value) : null,
+                    Height = x.Attribute("height") != null && !string.IsNullOrEmpty(x.Attribute("height").Value) ? int.Parse(x.Attribute("height").Value) : null,
+                    Type = x.Attribute("type") != null && !string.IsNullOrEmpty(x.Attribute("type").Value) ? (MenuItemType)Enum.Parse(typeof(MenuItemType), x.Attribute("type").Value, true) : MenuItemType.Item,
+                    Shortcut = ReadShortcut(x)
+                })
+                .ToList();
+
+            settings.MenuItems.StartProgramItems = document
+                .XPathSelectElements("/smartContextMenu/menuItems/startProgramItems/item")
+                .Select(x => new StartProgramMenuItem
+                {
+                    Title = x.Attribute("title") != null ? x.Attribute("title").Value : string.Empty,
+                    FileName = x.Attribute("fileName") != null ? x.Attribute("fileName").Value : string.Empty,
+                    Arguments = x.Attribute("arguments") != null ? x.Attribute("arguments").Value : string.Empty,
+                    BeginParameter = x.Attribute("beginParameter") != null ? x.Attribute("beginParameter").Value : string.Empty,
+                    EndParameter = x.Attribute("endParameter") != null ? x.Attribute("endParameter").Value : string.Empty,
+                    ShowWindow = x.Attribute("showWindow") == null || string.IsNullOrEmpty(x.Attribute("showWindow").Value) || x.Attribute("showWindow").Value.ToLower() == "true",
+                    UseWindowWorkingDirectory = x.Attribute("useWindowWorkingDirectory") != null && !string.IsNullOrEmpty(x.Attribute("useWindowWorkingDirectory").Value) && x.Attribute("useWindowWorkingDirectory").Value.ToLower() == "true",
+                    Type = x.Attribute("type") != null && !string.IsNullOrEmpty(x.Attribute("type").Value) ? (MenuItemType)Enum.Parse(typeof(MenuItemType), x.Attribute("type").Value, true) : MenuItemType.Item,
+                    Shortcut = ReadShortcut(x)
+                })
+                .ToList();
+
+            settings.MenuItems.Items = document
+                .XPathSelectElements("/smartContextMenu/menuItems/items/item")
+                .Select(x => {
+                    var menuItem = new MenuItem
+                    {
+                        Name = x.Attribute("name") != null ? x.Attribute("name").Value : string.Empty,
+                        Show = x.Attribute("show") == null || x.Attribute("show").Value.ToLower() != "false",
+                        Type = x.Attribute("type") != null && !string.IsNullOrEmpty(x.Attribute("type").Value) ? (MenuItemType)Enum.Parse(typeof(MenuItemType), x.Attribute("type").Value, true) : MenuItemType.Item,
+                        Shortcut = ReadShortcut(x)
+                    };
+                    menuItem.Items = menuItem.Type == MenuItemType.Group ?
+                    x.XPathSelectElements("./items/item")
+                    .Select(y => new MenuItem
+                    {
+                        Name = y.Attribute("name") != null ? y.Attribute("name").Value : string.Empty,
+                        Show = y.Attribute("show") == null || y.Attribute("show").Value.ToLower() != "false",
+                        Type = y.Attribute("type") != null && !string.IsNullOrEmpty(y.Attribute("type").Value) ? (MenuItemType)Enum.Parse(typeof(MenuItemType), y.Attribute("type").Value, true) : MenuItemType.Item,
+                        Shortcut = ReadShortcut(y)
+                    }).ToList() : new List<MenuItem>();
+                    return menuItem;
+                })
+                .ToList();
+
+            var hotKeysElement = document.XPathSelectElement("/smartContextMenu/hotKeys");
+            settings.Key1 = hotKeysElement.Attribute("key1") != null && !string.IsNullOrEmpty(hotKeysElement.Attribute("key1").Value) ? (VirtualKeyModifier)int.Parse(hotKeysElement.Attribute("key1").Value) : VirtualKeyModifier.None;
+            settings.Key2 = hotKeysElement.Attribute("key2") != null && !string.IsNullOrEmpty(hotKeysElement.Attribute("key2").Value) ? (VirtualKeyModifier)int.Parse(hotKeysElement.Attribute("key2").Value) : VirtualKeyModifier.None;
+            settings.Key3 = hotKeysElement.Attribute("key3") != null && !string.IsNullOrEmpty(hotKeysElement.Attribute("key3").Value) ? (VirtualKey)int.Parse(hotKeysElement.Attribute("key3").Value) : VirtualKey.None;
+            settings.Key4 = hotKeysElement.Attribute("key4") != null && !string.IsNullOrEmpty(hotKeysElement.Attribute("key4").Value) ? (VirtualKey)int.Parse(hotKeysElement.Attribute("key4").Value) : VirtualKey.None;
+            settings.MouseButton = hotKeysElement.Attribute("mouseButton") != null && !string.IsNullOrEmpty(hotKeysElement.Attribute("mouseButton").Value) ? (MouseButton)int.Parse(hotKeysElement.Attribute("mouseButton").Value) : MouseButton.None;
+
+            var nextMonitorElement = document.XPathSelectElement("/smartContextMenu/mover/next");
+            settings.NextMonitor = ReadShortcut(nextMonitorElement);
+
+            var previousMonitorElement = document.XPathSelectElement("/smartContextMenu/mover/previous");
+            settings.PreviousMonitor = ReadShortcut(previousMonitorElement);
+
+            var dimmerElement = document.XPathSelectElement("/smartContextMenu/dimmer");
+            settings.Dimmer.Color = dimmerElement.Attribute("color") != null ? dimmerElement.Attribute("color").Value : string.Empty;
+            settings.Dimmer.Transparency = dimmerElement.Attribute("transparency") != null ? int.Parse(dimmerElement.Attribute("transparency").Value) : 0;
+
+            var sizerElement = document.XPathSelectElement("/smartContextMenu/sizer");
+            settings.Sizer = sizerElement.Attribute("type") != null && !string.IsNullOrEmpty(sizerElement.Attribute("type").Value) ? (WindowSizerType)int.Parse(sizerElement.Attribute("type").Value) : WindowSizerType.WindowWithMargins;
+
+            var systemTrayIconElement = document.XPathSelectElement("/smartContextMenu/systemTrayIcon");
+            if (systemTrayIconElement != null && systemTrayIconElement.Attribute("show") != null && systemTrayIconElement.Attribute("show").Value != null && systemTrayIconElement.Attribute("show").Value.ToLower() == "false")
+            {
+                settings.ShowSystemTrayIcon = false;
+            }
+
+            var displayElement = document.XPathSelectElement("/smartContextMenu/display");
+            if (displayElement != null && displayElement.Attribute("highDPI") != null && displayElement.Attribute("highDPI").Value != null && displayElement.Attribute("highDPI").Value.ToLower() == "true")
+            {
+                settings.EnableHighDPI = true;
+            }
+
+            var cultureName = Thread.CurrentThread.CurrentUICulture.Name;
+            var languageElement = document.XPathSelectElement("/smartContextMenu/language");
+            settings.LanguageName = languageElement != null && languageElement.Attribute("name") != null && !string.IsNullOrWhiteSpace(languageElement.Attribute("name").Value) ?
+                languageElement.Attribute("name").Value.ToLower().Trim() :
+                cultureName switch
+                {
+                    "zh-CN" => "zh_cn",
+                    "zh-TW" => "zh_tw",
+                    "ja-JP" => "ja",
+                    "ru-RU" => "ru",
+                    "de-DE" => "de",
+                    "fr-FR" => "fr",
+                    "hu-HU" => "hu",
+                    "he-IL" => "he",
+                    "es-ES" => "es",
+                    "ko-KR" or "ko-KP" => "ko",
+                    "pt-BR" or "pt-PT" => "pt",
+                    "it-IT" or "it-SM" or "it-CH" or "it-VA" => "it",
+                    "sr-Cyrl" or "sr-Cyrl-BA" or "sr-Cyrl-ME" or "sr-Cyrl-RS" or "sr-Cyrl-CS" => "sr",
+                    "sl-SI" => "sl",
+                    "ta-IN" => "ta",
+                    _ => "en"
+                };
+
+            return settings;
+        }
+
+        private static void Save(string fileName, ApplicationSettings settings)
+        {
+            var document = new XDocument();
+            document.Add(new XElement("smartContextMenu",
+                                 new XElement("menuItems",
+                                     new XElement("items", settings.MenuItems.Items.Select(x => new XElement("item",
+                                         new XAttribute("type", x.Type.ToString().ToLower()),
+                                         x.Type == MenuItemType.Item || x.Type == MenuItemType.Group ? new XAttribute("name", x.Name) : null,
+                                         x.Show == false ? new XAttribute("show", x.Show.ToString().ToLower()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key1", x.Shortcut.Key1 == VirtualKeyModifier.None ? string.Empty : ((int)x.Shortcut.Key1).ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key2", x.Shortcut.Key2 == VirtualKeyModifier.None ? string.Empty : ((int)x.Shortcut.Key2).ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key3", x.Shortcut.Key3 == VirtualKey.None ? string.Empty : ((int)x.Shortcut.Key3).ToString()) : null,
+                                         x.Items.Any() ?
+                                            new XElement("items", x.Items.Select(y => new XElement("item",
+                                            new XAttribute("type", y.Type.ToString().ToLower()),
+                                            y.Type == MenuItemType.Item || y.Type == MenuItemType.Group ? new XAttribute("name", y.Name) : null,
+                                            y.Show == false ? new XAttribute("show", y.Show.ToString().ToLower()) : null,
+                                            y.Type == MenuItemType.Item ? new XAttribute("key1", y.Shortcut.Key1 == VirtualKeyModifier.None ? string.Empty : ((int)y.Shortcut.Key1).ToString()) : null,
+                                            y.Type == MenuItemType.Item ? new XAttribute("key2", y.Shortcut.Key2 == VirtualKeyModifier.None ? string.Empty : ((int)y.Shortcut.Key2).ToString()) : null,
+                                            y.Type == MenuItemType.Item ? new XAttribute("key3", y.Shortcut.Key3 == VirtualKey.None ? string.Empty : ((int)y.Shortcut.Key3).ToString()) : null))) : null))),
+                                     new XElement("windowSizeItems", settings.MenuItems.WindowSizeItems.Select(x => new XElement("item",
+                                         x.Type == MenuItemType.Separator ? new XAttribute("type", x.Type.ToString().ToLower()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("title", x.Title) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("left", x.Left == null ? string.Empty : x.Left.Value.ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("top", x.Top == null ? string.Empty : x.Top.Value.ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("width", x.Width == null ? string.Empty : x.Width.ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("height", x.Height == null ? string.Empty : x.Height.ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key1", x.Shortcut.Key1 == VirtualKeyModifier.None ? string.Empty : ((int)x.Shortcut.Key1).ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key2", x.Shortcut.Key2 == VirtualKeyModifier.None ? string.Empty : ((int)x.Shortcut.Key2).ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key3", x.Shortcut.Key3 == VirtualKey.None ? string.Empty : ((int)x.Shortcut.Key3).ToString()) : null))),
+                                     new XElement("startProgramItems", settings.MenuItems.StartProgramItems.Select(x => new XElement("item",
+                                         x.Type == MenuItemType.Separator ? new XAttribute("type", x.Type.ToString().ToLower()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("title", x.Title) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("fileName", x.FileName) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("arguments", x.Arguments) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("useWindowWorkingDirectory", x.UseWindowWorkingDirectory.ToString().ToLower()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("showWindow", x.ShowWindow.ToString().ToLower()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("beginParameter", x.BeginParameter) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("endParameter", x.EndParameter) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key1", x.Shortcut.Key1 == VirtualKeyModifier.None ? string.Empty : ((int)x.Shortcut.Key1).ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key2", x.Shortcut.Key2 == VirtualKeyModifier.None ? string.Empty : ((int)x.Shortcut.Key2).ToString()) : null,
+                                         x.Type == MenuItemType.Item ? new XAttribute("key3", x.Shortcut.Key3 == VirtualKey.None ? string.Empty : ((int)x.Shortcut.Key3).ToString()) : null)))),
+                                 new XElement("hotKeys",
+                                     new XAttribute("key1", settings.Key1 == VirtualKeyModifier.None ? string.Empty : ((int)settings.Key1).ToString()),
+                                     new XAttribute("key2", settings.Key2 == VirtualKeyModifier.None ? string.Empty : ((int)settings.Key2).ToString()),
+                                     new XAttribute("key3", settings.Key3 == VirtualKey.None ? string.Empty : ((int)settings.Key3).ToString()),
+                                     new XAttribute("key4", settings.Key4 == VirtualKey.None ? string.Empty : ((int)settings.Key4).ToString()),
+                                     new XAttribute("mouseButton", settings.MouseButton == MouseButton.None ? string.Empty : ((int)settings.MouseButton).ToString())
+                                 ),
+                                 new XElement("mover",
+                                     new XElement("next",
+                                         new XAttribute("key1", settings.NextMonitor.Key1 == VirtualKeyModifier.None ? string.Empty : ((int)settings.NextMonitor.Key1).ToString()),
+                                         new XAttribute("key2", settings.NextMonitor.Key2 == VirtualKeyModifier.None ? string.Empty : ((int)settings.NextMonitor.Key2).ToString()),
+                                         new XAttribute("key3", settings.NextMonitor.Key3 == VirtualKey.None ? string.Empty : ((int)settings.NextMonitor.Key3).ToString())),
+                                     new XElement("previous",
+                                         new XAttribute("key1", settings.PreviousMonitor.Key1 == VirtualKeyModifier.None ? string.Empty : ((int)settings.PreviousMonitor.Key1).ToString()),
+                                         new XAttribute("key2", settings.PreviousMonitor.Key2 == VirtualKeyModifier.None ? string.Empty : ((int)settings.PreviousMonitor.Key2).ToString()),
+                                         new XAttribute("key3", settings.PreviousMonitor.Key3 == VirtualKey.None ? string.Empty : ((int)settings.PreviousMonitor.Key3).ToString()))
+                                 ),
+                                 new XElement("dimmer",
+                                     new XAttribute("color", settings.Dimmer.Color),
+                                     new XAttribute("transparency", settings.Dimmer.Transparency.ToString())
+                                 ),
+                                 new XElement("sizer",
+                                     new XAttribute("type", ((int)settings.Sizer).ToString())
+                                 ),
+                                 new XElement("systemTrayIcon",
+                                     new XAttribute("show", settings.ShowSystemTrayIcon.ToString().ToLower())
+                                 ),
+                                 new XElement("display",
+                                     new XAttribute("highDPI", settings.EnableHighDPI.ToString().ToLower())
+                                 ),
+                                 new XElement("language",
+                                     new XAttribute("name", settings.LanguageName.ToLower())
+                                 )));
+            FileUtils.Save(fileName, document);
+        }
+
+        private static KeyboardShortcut ReadShortcut(XElement element)
+        {
+            var shortcut = new KeyboardShortcut();
+            if (element == null)
+            {
+                return shortcut;
+            }
+
+            shortcut.Key1 = element.Attribute("key1") != null && !string.IsNullOrEmpty(element.Attribute("key1").Value) ? (VirtualKeyModifier)int.Parse(element.Attribute("key1").Value) : VirtualKeyModifier.None;
+            shortcut.Key2 = element.Attribute("key2") != null && !string.IsNullOrEmpty(element.Attribute("key2").Value) ? (VirtualKeyModifier)int.Parse(element.Attribute("key2").Value) : VirtualKeyModifier.None;
+            shortcut.Key3 = element.Attribute("key3") != null && !string.IsNullOrEmpty(element.Attribute("key3").Value) ? (VirtualKey)int.Parse(element.Attribute("key3").Value) : VirtualKey.None;
+            return shortcut;
+        }
+    }
+}

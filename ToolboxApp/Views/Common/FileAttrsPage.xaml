@@ -1,0 +1,41 @@
+<UserControl x:Class="ToolboxApp.Views.Common.FileAttrsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ToolboxApp.Views.Common">
+    <UserControl.Resources>
+        <local:NotEmptyConverter x:Key="NotEmptyConverter"/>
+    </UserControl.Resources>
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBox x:Name="PathBox" Width="400" MaxWidth="400"/>
+                <Button Content="浏览..." Padding="8,4" Margin="8,0,0,0" Click="BrowseBtn_Click"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <Button x:Name="ScanBtn" Content="开始扫描" Padding="12,6" Click="ScanBtn_Click"/>
+                <Button Content="复制结果" Padding="12,6" Margin="8,0,0,0" Click="CopyBtn_Click"/>
+            </StackPanel>
+            <Label x:Name="StatusLabel" Foreground="Gray"/>
+        </StackPanel>
+
+        <DataGrid x:Name="ResultGrid">
+            <DataGrid.CellStyle>
+                <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Content.Text, Converter={StaticResource NotEmptyConverter}}" Value="True">
+                            <Setter Property="ToolTip" Value="{Binding RelativeSource={RelativeSource Self}, Path=Content.Text}"/>
+                            <Setter Property="ToolTipService.IsEnabled" Value="True"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.CellStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="文件名" Binding="{Binding FileName}" Width="2*"/>
+                <DataGridTextColumn Header="大小(bytes)" Binding="{Binding Size}" Width="1.2*" SortMemberPath="Size"/>
+                <DataGridTextColumn Header="MD5" Binding="{Binding MD5}" Width="2.8*"/>
+                <DataGridTextColumn Header="文件路径" Binding="{Binding FilePath}" Width="3*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

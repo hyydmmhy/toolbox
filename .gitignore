@@ -1,0 +1,10 @@
+bin/
+obj/
+.claude/
+.vs/
+*.user
+*.lscache
+temp/
+publish/
+拆分/
+docs/

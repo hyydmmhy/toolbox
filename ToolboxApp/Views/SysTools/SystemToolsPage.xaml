@@ -1,0 +1,17 @@
+<UserControl x:Class="ToolboxApp.Views.SysTools.SystemToolsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Padding="16">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <TextBlock Text="常用工具" Foreground="#666666" Margin="0,0,0,8"/>
+            <UniformGrid x:Name="CommonToolsPanel" Columns="6" Margin="0,0,0,16"/>
+
+            <TextBlock Text="系统管理" Foreground="#666666" Margin="0,0,0,8"/>
+            <UniformGrid x:Name="SystemManagePanel" Columns="6" Margin="0,0,0,16"/>
+
+            <TextBlock Text="网络工具" Foreground="#666666" Margin="0,0,0,8"/>
+            <UniformGrid x:Name="NetworkToolsPanel" Columns="6"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

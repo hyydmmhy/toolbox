@@ -1,0 +1,17 @@
+<Weavers xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="FodyWeavers.xsd">
+  <!--
+    onnxruntime.dll / onnxruntime_providers_shared.dll 不需要 Costura 内嵌：
+    单文件发布时我们用 gzip 内嵌 Toolbox.onnxruntime.dll.gz（见 csproj 的 GzipOnnxRuntimeNative
+    target），运行时 PpOcrEngine.EnsureNativeLibrary 会释放它到 %APPDATA%\Toolbox\native\。
+    Costura 再把原始 10 MB 嵌一遍是纯浪费。多文件发布时这两个 dll 就在程序目录，也不需要嵌入。
+
+    XSD 规定 attribute 用 | 分隔，element 用换行分隔——两边都写一遍，确保任一形式被 Costura 采用。
+  -->
+  <Costura ExcludeAssemblies="onnxruntime|onnxruntime_providers_shared"
+           ExcludeRuntimeAssemblies="onnxruntime|onnxruntime_providers_shared">
+    <ExcludeAssemblies>onnxruntime
+onnxruntime_providers_shared</ExcludeAssemblies>
+    <ExcludeRuntimeAssemblies>onnxruntime
+onnxruntime_providers_shared</ExcludeRuntimeAssemblies>
+  </Costura>
+</Weavers>

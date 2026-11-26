@@ -1,0 +1,29 @@
+<UserControl x:Class="ToolboxApp.Views.Other.OcrPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Padding="16">
+    <DockPanel>
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#666666" Margin="0,0,0,12">
+            使用本地 PP-OCRv4 模型（OnnxRuntime 推理，无网络依赖）。首次运行会自动下载模型（约 14 MB，后台下载不卡界面），之后直接复用缓存。支持从剪贴板粘贴截图或选择本地图片文件。
+        </TextBlock>
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <Button x:Name="BtnFromClipboard" Content="从剪贴板识别" Click="BtnFromClipboard_Click"/>
+            <Button x:Name="BtnFromFile" Content="从文件识别" Margin="8,0,0,0" Click="BtnFromFile_Click"/>
+            <Button x:Name="BtnCancel" Content="取消" Margin="8,0,0,0" Click="BtnCancel_Click"
+                    Visibility="Collapsed"/>
+            <Button Content="模型目录" Margin="8,0,0,0" Click="BtnOpenModelDir_Click"/>
+            <Button x:Name="BtnClearModel" Content="清除模型缓存" Margin="8,0,0,0" Click="BtnClearModel_Click"/>
+            <Button Content="复制结果" Margin="8,0,0,0" Click="BtnCopyResult_Click"/>
+        </StackPanel>
+
+        <TextBlock x:Name="LblStatus" DockPanel.Dock="Top" Margin="0,0,0,8" Foreground="#666666"
+                   Text="就绪"/>
+
+        <TextBlock DockPanel.Dock="Top" Text="识别结果" Foreground="#666666" Margin="0,0,0,4"/>
+
+        <TextBox x:Name="TxtResult" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="13"
+                 Padding="6" Background="#FAFAFA" BorderBrush="#E0E0E0"/>
+    </DockPanel>
+</UserControl>
