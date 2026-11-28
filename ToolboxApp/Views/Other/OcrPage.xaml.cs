@@ -159,7 +159,8 @@ namespace ToolboxApp.Views.Other
         private async Task<string> RunOnBackground(Bitmap bitmap, CancellationToken token)
         {
             LblStatus.Text = "正在识别…";
-            return await Task.Run(() =>
+            var sw = Stopwatch.StartNew();
+            var result = await Task.Run(() =>
             {
                 token.ThrowIfCancellationRequested();
                 var engine = GetEngine();
@@ -171,6 +172,12 @@ namespace ToolboxApp.Views.Other
                     sb.AppendLine(line.Text);
                 return sb.ToString().TrimEnd() + Environment.NewLine;
             }, token).ConfigureAwait(false);
+
+            sw.Stop();
+            // 识别完成后必须刷新状态，否则 LblStatus 会一直卡在"正在识别…"
+            int lineCount = result.TrimEnd('\r', '\n').Split('\n').Length;
+            SetStatus($"识别完成（{lineCount} 行，{sw.Elapsed.TotalMilliseconds:0} ms）");
+            return result;
         }
 
         /// <summary>
